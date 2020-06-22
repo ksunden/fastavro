@@ -11,7 +11,6 @@ except ImportError:
     from collections import Mapping, Sequence
 
 from . import const
-from ._six import long, is_str, iterkeys, itervalues
 from ._schema import (
     extract_record_type, extract_logical_type, schema_name, parse_schema
 )
@@ -42,7 +41,7 @@ cdef inline bint validate_boolean(datum, schema=None,
 
 cdef inline bint validate_string(datum, schema=None,
                                  str parent_ns='', bint raise_errors=True):
-    return is_str(datum) or isinstance(datum, UUID)
+    return isinstance(datum, str) or isinstance(datum, UUID)
 
 
 cdef inline bint validate_bytes(datum, schema=None,
@@ -53,7 +52,7 @@ cdef inline bint validate_bytes(datum, schema=None,
 cdef inline bint validate_int(datum, schema=None,
                               str parent_ns='', bint raise_errors=True):
     return (
-        (isinstance(datum, (int, long, numbers.Integral))
+        (isinstance(datum, (int, numbers.Integral))
          and INT_MIN_VALUE <= datum <= INT_MAX_VALUE
          and not isinstance(datum, bool))
         or isinstance(datum, (
@@ -64,7 +63,7 @@ cdef inline bint validate_int(datum, schema=None,
 cdef inline bint validate_long(datum, schema=None,
                                str parent_ns='', bint raise_errors=True):
     return (
-        (isinstance(datum, (int, long, numbers.Integral))
+        (isinstance(datum, (int, numbers.Integral))
          and LONG_MIN_VALUE <= datum <= LONG_MAX_VALUE
          and not isinstance(datum, bool))
         or isinstance(datum, (datetime.time, datetime.datetime, datetime.date))
@@ -74,7 +73,7 @@ cdef inline bint validate_long(datum, schema=None,
 cdef inline bint validate_float(datum, schema=None,
                                 str parent_ns='', bint raise_errors=True):
     return (
-        isinstance(datum, (int, long, float, numbers.Real))
+        isinstance(datum, (int, float, numbers.Real))
         and not isinstance(datum, bool)
     )
 
@@ -95,7 +94,7 @@ cdef inline bint validate_enum(datum, dict schema,
 
 cdef inline bint validate_array(datum, dict schema,
                                 str parent_ns='', bint raise_errors=True) except -1:
-    if not isinstance(datum, Sequence) or is_str(datum):
+    if not isinstance(datum, Sequence) or isinstance(datum, str):
         return False
 
     for d in datum:
@@ -111,11 +110,11 @@ cdef inline bint validate_map(object datum, dict schema, str parent_ns='',
     # initial checks for map type
     if not isinstance(datum, Mapping):
         return False
-    for k in iterkeys(datum):
-        if not is_str(k):
+    for k in datum:
+        if not isinstance(k, str):
             return False
 
-    for v in itervalues(datum):
+    for v in datum.values():
         if not _validate(datum=v, schema=schema['values'],
                          field=parent_ns,
                          raise_errors=raise_errors):

@@ -11,14 +11,11 @@ import bz2
 import zlib
 import datetime
 from decimal import Context
-from fastavro.six import MemoryIO
+from io import BytesIO
 from uuid import UUID
 
 import json
 
-from ._six import (
-    btou, utob, iteritems, is_str, long, be_signed_bytes_to_int
-)
 from ._schema import extract_record_type, extract_logical_type, parse_schema
 from ._schema_common import SCHEMA_DEFS
 from ._read_common import (
@@ -187,7 +184,7 @@ cpdef read_decimal(data, writer_schema=None, reader_schema=None):
     scale = writer_schema.get('scale', 0)
     precision = writer_schema['precision']
 
-    unscaled_datum = be_signed_bytes_to_int(data)
+    unscaled_datum = int.from_bytes(data, byteorder='big', signed=True)
 
     decimal_context.prec = precision
     return decimal_context.create_decimal(unscaled_datum).\
@@ -287,7 +284,7 @@ cdef unicode read_utf8(fo, writer_schema=None, reader_schema=None):
     """A string is encoded as a long followed by that many bytes of UTF-8
     encoded character data.
     """
-    return btou(read_bytes(fo), 'utf-8')
+    return read_bytes(fo).decode()
 
 
 cdef read_fixed(fo, writer_schema, reader_schema=None):
@@ -480,7 +477,7 @@ cdef read_record(fo, writer_schema, reader_schema=None, return_record_name=False
         # fill in default values
         if len(readers_field_dict) > len(record):
             writer_fields = [f['name'] for f in writer_schema['fields']]
-            for f_name, field in iteritems(readers_field_dict):
+            for f_name, field in readers_field_dict.items():
                 if f_name not in writer_fields and f_name not in record:
                     if 'default' in field:
                         record[field['name']] = field['default']
@@ -505,17 +502,16 @@ LOGICAL_READERS = {
 
 cpdef maybe_promote(data, writer_type, reader_type):
     if writer_type == "int":
-        if reader_type == "long":
-            return long(data)
+        # No need to promote to long since they are the same type in Python
         if reader_type == "float" or reader_type == "double":
             return float(data)
     if writer_type == "long":
         if reader_type == "float" or reader_type == "double":
             return float(data)
     if writer_type == "string" and reader_type == "bytes":
-        return utob(data)
+        return data.encode()
     if writer_type == "bytes" and reader_type == "string":
-        return btou(data, 'utf-8')
+        return data.decode()
     return data
 
 
@@ -593,7 +589,7 @@ cpdef skip_sync(fo, sync_marker):
 
 cpdef null_read_block(fo):
     """Read block in "null" codec."""
-    return MemoryIO(read_bytes(fo))
+    return BytesIO(read_bytes(fo))
 
 
 cpdef deflate_read_block(fo):
@@ -601,13 +597,13 @@ cpdef deflate_read_block(fo):
     data = read_bytes(fo)
     # -15 is the log of the window size; negative indicates "raw" (no
     # zlib headers) decompression.  See zlib.h.
-    return MemoryIO(zlib.decompress(data, -15))
+    return BytesIO(zlib.decompress(data, -15))
 
 
 cpdef bzip2_read_block(fo):
     """Read block in "bzip2" codec."""
     data = read_bytes(fo)
-    return MemoryIO(bz2.decompress(data))
+    return BytesIO(bz2.decompress(data))
 
 
 BLOCK_READERS = {
@@ -621,7 +617,7 @@ cpdef snappy_read_block(fo):
     length = read_long(fo)
     data = fo.read(length - 4)
     fo.read(4)  # CRC
-    return MemoryIO(snappy.decompress(data))
+    return BytesIO(snappy.decompress(data))
 
 
 try:
@@ -635,7 +631,7 @@ else:
 cpdef zstandard_read_block(fo):
     length = read_long(fo)
     data = fo.read(length)
-    return MemoryIO(zstd.ZstdDecompressor().decompress(data))
+    return BytesIO(zstd.ZstdDecompressor().decompress(data))
 
 
 try:
@@ -649,7 +645,7 @@ else:
 cpdef lz4_read_block(fo):
     length = read_long(fo)
     data = fo.read(length)
-    return MemoryIO(lz4.block.decompress(data))
+    return BytesIO(lz4.block.decompress(data))
 
 
 try:
@@ -663,7 +659,7 @@ else:
 cpdef xz_read_block(fo):
     length = read_long(fo)
     data = fo.read(length)
-    return MemoryIO(lzma.decompress(data))
+    return BytesIO(lzma.decompress(data))
 
 
 try:
@@ -771,7 +767,7 @@ class file_reader:
 
         # `meta` values are bytes. So, the actual decoding has to be external.
         self.metadata = {
-            k: btou(v) for k, v in iteritems(self._header['meta'])
+            k: v.decode() for k, v in self._header['meta'].items()
         }
 
         self._schema = json.loads(self.metadata['avro.schema'])
@@ -847,7 +843,7 @@ cpdef schemaless_reader(fo, writer_schema, reader_schema=None,
 
 
 cpdef is_avro(path_or_buffer):
-    if is_str(path_or_buffer):
+    if isinstance(path_or_buffer, str):
         fp = open(path_or_buffer, 'rb')
         close = True
     else:

@@ -10,6 +10,7 @@ import datetime
 import sys
 import os
 from dateutil.tz import tzlocal
+from datetime import timezone
 
 from .conftest import assert_naive_datetime_equal_to_tz_datetime
 
@@ -139,12 +140,7 @@ def test_not_null_date():
     assert (data2['date'] == datetime.date(2017, 1, 1))
 
 
-# particularly critical on Windows
-# see https://github.com/fastavro/fastavro/issues/389
-@pytest.mark.skipif(
-    os.name == "nt" and sys.version_info <= (3, 0),
-    reason="Bug was not fixed on Python 2"
-)
+# SCOTT see https://github.com/fastavro/fastavro/issues/389
 def test_ancient_datetime():
     schema_datetime = {
         "fields": [
@@ -434,7 +430,6 @@ def test_pandas_datetime():
 
     # Import here as pandas is not installed on pypy for testing
     import pandas as pd
-    import pytz
 
     schema = {
         "fields": [
@@ -451,7 +446,7 @@ def test_pandas_datetime():
 
     data1 = {
         "timestamp-micros": pd.to_datetime(
-            datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+            datetime.datetime.utcnow().replace(tzinfo=timezone.utc)
         )
     }
     assert serialize(schema, data1)

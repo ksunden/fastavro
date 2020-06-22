@@ -6,7 +6,7 @@
 # http://svn.apache.org/viewvc/avro/trunk/lang/py/src/avro/ which is under
 # Apache 2.0 license (http://www.apache.org/licenses/LICENSE-2.0)
 
-from fastavro.six import MemoryIO
+from io import BytesIO
 from struct import error as StructError
 import bz2
 import zlib
@@ -18,9 +18,6 @@ import json
 
 from .io.binary_decoder import BinaryDecoder
 from .io.json_decoder import AvroJSONDecoder
-from .six import (
-    xrange, btou, utob, iteritems, is_str, long, be_signed_bytes_to_int
-)
 from .schema import extract_record_type, extract_logical_type, parse_schema
 from ._schema_common import SCHEMA_DEFS
 from ._read_common import (
@@ -165,7 +162,7 @@ def read_decimal(data, writer_schema=None, reader_schema=None):
     scale = writer_schema.get('scale', 0)
     precision = writer_schema['precision']
 
-    unscaled_datum = be_signed_bytes_to_int(data)
+    unscaled_datum = int.from_bytes(data, byteorder='big', signed=True)
 
     decimal_context.prec = precision
     return decimal_context.create_decimal(unscaled_datum). \
@@ -356,7 +353,7 @@ def read_record(decoder, writer_schema, reader_schema=None,
         # fill in default values
         if len(readers_field_dict) > len(record):
             writer_fields = [f['name'] for f in writer_schema['fields']]
-            for f_name, field in iteritems(readers_field_dict):
+            for f_name, field in readers_field_dict.items():
                 if f_name not in writer_fields and f_name not in record:
                     if 'default' in field:
                         record[field['name']] = field['default']
@@ -401,17 +398,16 @@ READERS = {
 
 def maybe_promote(data, writer_type, reader_type):
     if writer_type == "int":
-        if reader_type == "long":
-            return long(data)
+        # No need to promote to long since they are the same type in Python
         if reader_type == "float" or reader_type == "double":
             return float(data)
     if writer_type == "long":
         if reader_type == "float" or reader_type == "double":
             return float(data)
     if writer_type == "string" and reader_type == "bytes":
-        return utob(data)
+        return data.encode()
     if writer_type == "bytes" and reader_type == "string":
-        return btou(data, 'utf-8')
+        return data.decode()
     return data
 
 
@@ -473,7 +469,7 @@ def skip_sync(fo, sync_marker):
 
 def null_read_block(decoder):
     """Read block in "null" codec."""
-    return MemoryIO(decoder.read_bytes())
+    return BytesIO(decoder.read_bytes())
 
 
 def deflate_read_block(decoder):
@@ -481,13 +477,13 @@ def deflate_read_block(decoder):
     data = decoder.read_bytes()
     # -15 is the log of the window size; negative indicates "raw" (no
     # zlib headers) decompression.  See zlib.h.
-    return MemoryIO(zlib.decompress(data, -15))
+    return BytesIO(zlib.decompress(data, -15))
 
 
 def bzip2_read_block(decoder):
     """Read block in "bzip2" codec."""
     data = decoder.read_bytes()
-    return MemoryIO(bz2.decompress(data))
+    return BytesIO(bz2.decompress(data))
 
 
 BLOCK_READERS = {
@@ -501,7 +497,7 @@ def snappy_read_block(decoder):
     length = read_long(decoder)
     data = decoder.read_fixed(length - 4)
     decoder.read_fixed(4)  # CRC
-    return MemoryIO(snappy.decompress(data))
+    return BytesIO(snappy.decompress(data))
 
 
 try:
@@ -515,7 +511,7 @@ else:
 def zstandard_read_block(decoder):
     length = read_long(decoder)
     data = decoder.read_fixed(length)
-    return MemoryIO(zstd.ZstdDecompressor().decompress(data))
+    return BytesIO(zstd.ZstdDecompressor().decompress(data))
 
 
 try:
@@ -529,7 +525,7 @@ else:
 def lz4_read_block(decoder):
     length = read_long(decoder)
     data = decoder.read_fixed(length)
-    return MemoryIO(lz4.block.decompress(data))
+    return BytesIO(lz4.block.decompress(data))
 
 
 try:
@@ -543,7 +539,7 @@ else:
 def xz_read_block(decoder):
     length = read_long(decoder)
     data = decoder.read_fixed(length)
-    return MemoryIO(lzma.decompress(data))
+    return BytesIO(lzma.decompress(data))
 
 
 try:
@@ -577,7 +573,7 @@ def _iter_avro_records(decoder, header, codec, writer_schema, reader_schema,
 
         block_fo = read_block(decoder)
 
-        for i in xrange(block_count):
+        for i in range(block_count):
             yield read_data(
                 BinaryDecoder(block_fo), writer_schema, reader_schema,
                 return_record_name
@@ -650,7 +646,7 @@ class Block:
         self.return_record_name = return_record_name
 
     def __iter__(self):
-        for i in xrange(self.num_records):
+        for i in range(self.num_records):
             yield read_data(
                 BinaryDecoder(self.bytes_),
                 self.writer_schema,
@@ -691,7 +687,7 @@ class file_reader(object):
 
         # `meta` values are bytes. So, the actual decoding has to be external.
         self.metadata = {
-            k: btou(v) for k, v in iteritems(self._header['meta'])
+            k: v.decode() for k, v in self._header['meta'].items()
         }
 
         self._schema = json.loads(self.metadata['avro.schema'])
@@ -915,7 +911,7 @@ def is_avro(path_or_buffer):
     path_or_buffer: path to file or file-like object
         Path to file
     """
-    if is_str(path_or_buffer):
+    if isinstance(path_or_buffer, str):
         fp = open(path_or_buffer, 'rb')
         close = True
     else:
