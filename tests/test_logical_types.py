@@ -1,6 +1,5 @@
 import fastavro
 from fastavro.__main__ import _clean_json_record
-from fastavro._timezone import epoch
 import pytest
 
 from decimal import Decimal
@@ -159,7 +158,7 @@ def test_ancient_datetime():
     }
 
     my_epoch = datetime.datetime(1970, 1, 1, tzinfo=tzlocal())
-    diff = my_epoch - epoch
+    diff = my_epoch - datetime.datetime(1970, 1, 1, tzinfo=timezone.utc)
 
     data1 = {
         'timestamp-millis': datetime.datetime(1960, 1, 1),

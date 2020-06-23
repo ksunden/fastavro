@@ -4,35 +4,28 @@ import datetime
 import decimal
 from io import BytesIO
 import os
-import time
 import uuid
 from .const import (
     MCS_PER_HOUR, MCS_PER_MINUTE, MCS_PER_SECOND, MLS_PER_HOUR, MLS_PER_MINUTE,
     MLS_PER_SECOND, DAYS_SHIFT
 )
-from ._timezone import epoch, epoch_naive
 
 
 is_windows = os.name == 'nt'
+epoch_naive = datetime.datetime(1970, 1, 1)
 
 
 def prepare_timestamp_millis(data, schema):
     """Converts datetime.datetime object to int timestamp with milliseconds
     """
     if isinstance(data, datetime.datetime):
-        if data.tzinfo is not None:
-            delta = (data - epoch)
-            return int(delta.total_seconds() * MLS_PER_SECOND)
-
         # On Windows, mktime does not support pre-epoch, see e.g.
         # https://stackoverflow.com/questions/2518706/python-mktime-overflow-error
-        if is_windows:
+        if is_windows and data.tzinfo is None:
             delta = (data - epoch_naive)
             return int(delta.total_seconds() * MLS_PER_SECOND)
         else:
-            t = int(time.mktime(data.timetuple())) * MLS_PER_SECOND + int(
-                data.microsecond / 1000)
-            return t
+            return int(data.timestamp() * MLS_PER_SECOND)
     else:
         return data
 
@@ -40,19 +33,13 @@ def prepare_timestamp_millis(data, schema):
 def prepare_timestamp_micros(data, schema):
     """Converts datetime.datetime to int timestamp with microseconds"""
     if isinstance(data, datetime.datetime):
-        if data.tzinfo is not None:
-            delta = (data - epoch)
-            return int(delta.total_seconds() * MCS_PER_SECOND)
-
         # On Windows, mktime does not support pre-epoch, see e.g.
         # https://stackoverflow.com/questions/2518706/python-mktime-overflow-error
-        if is_windows:
+        if is_windows and data.tzinfo is None:
             delta = (data - epoch_naive)
             return int(delta.total_seconds() * MCS_PER_SECOND)
         else:
-            t = int(time.mktime(data.timetuple())) * MCS_PER_SECOND + \
-                data.microsecond
-            return t
+            return int(data.timestamp() * MCS_PER_SECOND)
     else:
         return data
 

@@ -9,7 +9,7 @@
 
 import bz2
 import zlib
-import datetime
+from datetime import datetime, time, date, timezone, timedelta
 from decimal import Context
 from io import BytesIO
 from uuid import UUID
@@ -21,7 +21,6 @@ from ._schema_common import SCHEMA_DEFS
 from ._read_common import (
     SchemaResolutionError, MAGIC, SYNC_SIZE, HEADER_SCHEMA, missing_codec_lib
 )
-from ._timezone import epoch
 from .const import (
     MCS_PER_HOUR, MCS_PER_MINUTE, MCS_PER_SECOND, MLS_PER_HOUR, MLS_PER_MINUTE,
     MLS_PER_SECOND, DAYS_SHIFT
@@ -51,7 +50,7 @@ AVRO_TYPES = {
 }
 
 decimal_context = Context()
-
+epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 ctypedef int int32
 ctypedef unsigned int uint32
@@ -144,20 +143,18 @@ cdef inline read_boolean(fo, writer_schema=None, reader_schema=None):
         raise ReadError
 
 
-cpdef parse_timestamp(data, resolution):
-    return epoch + datetime.timedelta(seconds=data / resolution)
-
-
 cpdef read_timestamp_millis(data, writer_schema=None, reader_schema=None):
-    return parse_timestamp(data, float(MLS_PER_SECOND))
+    # Cannot use datetime.fromtimestamp: https://bugs.python.org/issue36439
+    return epoch + timedelta(seconds=(data / MLS_PER_SECOND))
 
 
 cpdef read_timestamp_micros(data, writer_schema=None, reader_schema=None):
-    return parse_timestamp(data, float(MCS_PER_SECOND))
+    # Cannot use datetime.fromtimestamp: https://bugs.python.org/issue36439
+    return epoch + timedelta(seconds=(data / MCS_PER_SECOND))
 
 
 cpdef read_date(data, writer_schema=None, reader_schema=None):
-    return datetime.date.fromordinal(data + DAYS_SHIFT)
+    return date.fromordinal(data + DAYS_SHIFT)
 
 
 cpdef read_uuid(data, writer_schema=None, reader_schema=None):
@@ -169,7 +166,7 @@ cpdef read_time_millis(data, writer_schema=None, reader_schema=None):
     m = int(data / MLS_PER_MINUTE) % 60
     s = int(data / MLS_PER_SECOND) % 60
     mls = int(data % MLS_PER_SECOND) * 1000
-    return datetime.time(h, m, s, mls)
+    return time(h, m, s, mls)
 
 
 cpdef read_time_micros(data, writer_schema=None, reader_schema=None):
@@ -177,7 +174,7 @@ cpdef read_time_micros(data, writer_schema=None, reader_schema=None):
     m = int(data / MCS_PER_MINUTE) % 60
     s = int(data / MCS_PER_SECOND) % 60
     mcs = data % MCS_PER_SECOND
-    return datetime.time(h, m, s, mcs)
+    return time(h, m, s, mcs)
 
 
 cpdef read_decimal(data, writer_schema=None, reader_schema=None):
